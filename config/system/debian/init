@@ -92,9 +92,9 @@ run "bspwm configs" bash -c '
   cp -r "'"$DIR"'/shared/bspwm" "$HOME/.config/bspwm"
   chmod +x "$HOME/.config/bspwm/bspwmrc" || true
 '
-cp -r "'"$DIR"'/shared/sxhkd" "$HOME/.config/sxhkd"
+cp -r "$DIR/shared/sxhkd" "$HOME/.config/sxhkd"
 
-cp -r "'"$DIR"'/shared/utils/zshrc" "$HOME/.zshrc"
+cp -r "$DIR/shared/utils/zshrc" "$HOME/.zshrc"
 
 run "polybar configs" bash -c '
   cp -r "'"$DIR"'/shared/polybar" "$HOME/.config/polybar"
@@ -103,7 +103,7 @@ run "polybar configs" bash -c '
 '
 
 mkdir -p "$HOME/Pictures"
-cp -r "'"$DIR"'/shared/imgs/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
+cp -r "$DIR/shared/imgs/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
 
 printf "exec bspwm\n" > "$HOME/.xinitrc"
 chmod +x "$HOME/.xinitrc" || true
