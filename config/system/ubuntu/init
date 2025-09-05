@@ -4,68 +4,89 @@ set -euo pipefail
 # ===== UI helpers =====
 BOLD="\033[1m"; RESET="\033[0m"
 RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; CYAN="\033[36m"
-
 info()  { printf "%b\n" "${BOLD}${CYAN}INFO\t:\t${RESET}$*"; }
 ok()    { printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}$*"; }
 warn()  { printf "%b\n" "${BOLD}${YELLOW}WARN\t:\t${RESET}$*"; }
 error() { printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}$*"; }
 rule()  { printf "%s\n" "---------------------------------------------------------------------"; }
 die()   { error "$*"; exit 1; }
-
-# Run commands with clear error messages
-run() {
-  local msg="$1"; shift
-  info "$msg"
-  if ! "$@"; then
-    error "Failed: $msg"
-    return 1
-  fi
-  ok "$msg"
-}
+run() { local msg="$1"; shift; info "$msg"; if ! "$@"; then error "Failed: $msg"; return 1; fi; ok "$msg"; }
 
 # ===== Args =====
 [[ $# -ge 1 ]] || die "Missing argument: base path 'dir'. Usage: $0 /path/to/dir"
-dir="$(readlink -f "$1")"
-[[ -d "$dir" ]] || die "Directory does not exist: $dir"
+dir="$(readlink -f "$1")"; [[ -d "$dir" ]] || die "Directory does not exist: $dir"
 
-# ===== Root check =====
-if [[ "$(id -u)" -eq 0 ]]; then
-  die "Do not run this script as root. Use a normal user with sudo privileges."
-fi
+# ===== Root / OS =====
+[[ "$(id -u)" -ne 0 ]] || die "Do not run as root. Use a normal user with sudo."
+[[ -f /etc/os-release ]] || die "Cannot read /etc/os-release"
+# shellcheck disable=SC1091
+. /etc/os-release
+case "${ID:-}" in debian|ubuntu|kali|linuxmint|pop) : ;; *) die "Unsupported OS for APT: ${ID:-unknown}";; esac
 
-# ===== Debian-like check (APT) =====
-if [[ -f /etc/os-release ]]; then
-  # shellcheck disable=SC1091
-  . /etc/os-release
-  case "${ID:-}" in
-    debian|ubuntu|kali|linuxmint|pop) : ;;
-    *) die "Unsupported OS for APT: ${ID:-unknown}" ;;
-  esac
-else
-  die "Cannot read /etc/os-release"
-fi
-
-# ===== Pre-reqs =====
 command -v sudo >/dev/null 2>&1 || die "sudo is not installed"
 export DEBIAN_FRONTEND=noninteractive
 
 # ===== Upgrade system =====
 rule
-run "Updating APT package index" sudo apt-get update -y -qq
-run "Upgrading system packages" sudo apt-get dist-upgrade -y -o Dpkg::Options::="--force-confnew"
+run "Updating APT package index" sudo apt-get update -y -qq 
+run "Upgrading system packages" sudo apt-get dist-upgrade -y --fix-missing
 run "Removing unused packages" sudo apt-get autoremove -y
 rule
 
-# ===== Install packages =====
+# ===== Install base packages (without picom/polybar) =====
 packages=(
   git build-essential curl wget unzip dos2unix
-  bspwm sxhkd polybar feh rofi jq
+  bspwm sxhkd feh rofi jq
   gnome-terminal xclip dconf-cli bat nitrogen
-  xorg picom lightdm lightdm-gtk-greeter
+  xorg lightdm lightdm-gtk-greeter
   fonts-hack-ttf gnome-themes-extra zsh
+  cmake meson ninja-build pkg-config python3-sphinx
+  libxext-dev libxcb1-dev libxcb-randr0-dev libxcb-composite0-dev
+  libxcb-image0-dev libxcb-ewmh-dev libxcb-icccm4-dev libxcb-xkb-dev
+  libxcb-xrm-dev libxcb-cursor-dev libasound2-dev libpulse-dev
+  libjsoncpp-dev libmpdclient-dev libcurl4-openssl-dev libuv1-dev
+  libxcb-damage0-dev libxcb-xfixes0-dev libxcb-shape0-dev
+  libxcb-render-util0-dev libxcb-render0-dev libxcb-present-dev
+  libxcb-xinerama0-dev libpixman-1-dev libdbus-1-dev libconfig-dev
+  libgl1-mesa-dev libpcre2-dev libevdev-dev uthash-dev libev-dev
+  x11-xserver-utils  # útil para tests de X
 )
 rule
-run "Installing required packages" sudo apt-get install -y "${packages[@]}"
+run "Installing required packages (build deps included)" sudo apt-get install -y "${packages[@]}"
+rule
+
+# ===== picom: try package, fallback to build =====
+install_picom() {
+  if apt-cache show picom >/dev/null 2>&1; then
+    run "Installing picom from repository" sudo apt-get install -y picom && return 0
+  fi
+  warn "picom not available in repo. Building from source"
+  local t; t="$(mktemp -d)"
+  run "Cloning picom" bash -c 'cd "'"$t"'" && git clone https://github.com/yshui/picom.git'
+  run "Building picom" bash -c 'cd "'"$t"'/picom && meson setup --buildtype=release build && ninja -C build'
+  run "Installing picom" sudo bash -c 'cd "'"$t"'/picom && ninja -C build install'
+  rm -rf "$t" || true
+  ok "picom installed from source"
+}
+
+# ===== polybar: try package, fallback to build =====
+install_polybar() {
+  if apt-cache show polybar >/dev/null 2>&1; then
+    run "Installing polybar from repository" sudo apt-get install -y polybar && return 0
+  fi
+  warn "polybar not available in repo. Building from source"
+  local t; t="$(mktemp -d)"
+  run "Cloning polybar" bash -c 'cd "'"$t"'" && git clone --recursive https://github.com/polybar/polybar.git'
+  run "Configuring polybar" bash -c 'cd "'"$t"'/polybar && mkdir -p build && cd build && cmake ..'
+  run "Building polybar" bash -c 'cd "'"$t"'/polybar/build && make -j"$(nproc)"'
+  run "Installing polybar" sudo bash -c 'cd "'"$t"'/polybar/build && make install'
+  rm -rf "$t" || true
+  ok "polybar installed from source"
+}
+
+rule
+install_picom
+install_polybar
 rule
 
 # ===== Copy config files =====
@@ -118,31 +139,16 @@ else
 fi
 rule
 
-# ===== Nerd Fonts: Hack =====
-rule
-tmpdir="$(mktemp -d)"
-cleanup_fonts() { rm -rf "$tmpdir"; }
-trap cleanup_fonts EXIT
-
-run "Downloading Hack Nerd Font" bash -c 'cd "'"$tmpdir"'" && wget -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/Hack.zip'
-run "Unzipping Hack font" bash -c 'cd "'"$tmpdir"'" && unzip -qq Hack.zip -d hack-fonts'
-run "Installing Hack font" sudo bash -c 'install -d /usr/share/fonts/truetype/hack && cp "'"$tmpdir"'/hack-fonts/"*.ttf" /usr/share/fonts/truetype/hack/'
-run "Refreshing font cache" sudo fc-cache -f >/dev/null
-rule
-
 # ===== Rofi themes =====
+rtmp="$(mktemp -d)"; trap 'rm -rf "$rtmp"' EXIT
 rule
-rtmp="$(mktemp -d)"
-trap 'rm -rf "$rtmp"; cleanup_fonts' EXIT
 run "Cloning rofi-themes-collection" git clone --depth=1 https://github.com/lr-tech/rofi-themes-collection.git "$rtmp/rofi"
 run "Installing rofi themes" bash -c 'install -d "$HOME/.local/share/rofi/themes" && cp -r "'"$rtmp/rofi/themes/"'* "$HOME/.local/share/rofi/themes/"'
-# lightdm greeter
 if [[ -f "$dir/../shared/utils/lightdm-gtk-greeter.conf" ]]; then
   run "Installing lightdm-gtk-greeter.conf" sudo cp "$dir/../shared/utils/lightdm-gtk-greeter.conf" /etc/lightdm/lightdm-gtk-greeter.conf
 else
   warn "Missing lightdm-gtk-greeter.conf"
 fi
-# images
 if [[ -d "$dir/../shared/img" ]]; then
   cp -r "$dir/../shared/img" "$HOME/" || warn "Copying images"
 fi
@@ -151,11 +157,7 @@ rule
 # ===== Zsh default shell =====
 rule
 if command -v zsh >/dev/null 2>&1; then
-  if chsh -s /usr/bin/zsh "$USER"; then
-    ok "Default shell changed to zsh (applies next login)"
-  else
-    warn "Could not change default shell. Do it manually: chsh -s /usr/bin/zsh"
-  fi
+  chsh -s /usr/bin/zsh "$USER" || warn "Could not change default shell. Do it manually: chsh -s /usr/bin/zsh"
   if [[ -f "$dir/../shared/utils/alias" ]]; then
     cat "$dir/../shared/utils/alias" >> "$HOME/.zshrc" || warn "Could not append aliases to .zshrc"
     ok "Aliases added to .zshrc"
@@ -187,11 +189,8 @@ rule
 # ===== Apply GNOME Terminal config and set_target =====
 rule
 if command -v /usr/local/bin/set_target >/dev/null 2>&1; then
-  if ! /usr/local/bin/set_target 8.8.8.8; then
-    error "set_target failed with 8.8.8.8"
-  else
-    ok "set_target executed"
-  fi
+  /usr/local/bin/set_target 8.8.8.8 || error "set_target failed with 8.8.8.8"
+  ok "set_target executed"
 else
   warn "set_target not in PATH"
 fi
@@ -199,11 +198,8 @@ fi
 if [[ -x "$dir/../shared/utils/gnome-terminal.sh" ]]; then
   chmod +x "$dir/../shared/utils/gnome-terminal.sh" || true
   if [[ -f "$dir/../shared/utils/gnome.conf" ]]; then
-    if ! "$dir/../shared/utils/gnome-terminal.sh" "$dir/../shared/utils/gnome.conf"; then
-      error "gnome-terminal.sh failed with gnome.conf"
-    else
-      ok "GNOME Terminal config applied"
-    fi
+    "$dir/../shared/utils/gnome-terminal.sh" "$dir/../shared/utils/gnome.conf" || error "gnome-terminal.sh failed with gnome.conf"
+    ok "GNOME Terminal config applied"
   else
     warn "Missing gnome.conf"
   fi
@@ -212,6 +208,5 @@ else
 fi
 rule
 
-# ===== Done =====
 ok "Installation completed. Please reboot the system to apply changes."
 rule

@@ -67,15 +67,14 @@ rule
 run "Installing required packages" sudo pacman -S --needed --noconfirm "${packages[@]}"
 rule
 
-# ===== YAY (AUR helper) =====
 
 # ===== AUR helper: yay =====
 rule
 if ! command -v yay >/dev/null 2>&1; then
   info "Installing yay (AUR helper)"
   tmp_yay="$(mktemp -d)"
-  run "Cloning yay-bin from AUR" bash -c 'cd "'"$tmp_yay"'" && git clone https://aur.archlinux.org/yay-bin.git'
-  run "Building and installing yay" bash -c 'cd "'"$tmp_yay"'/yay-bin && makepkg -si --noconfirm'
+  run "Cloning yay-bin from AUR" bash -c 'cd "'"$tmp_yay"'" && git clone https://aur.archlinux.org/yay.git'
+  run "Building and installing yay" bash -c 'cd "'"$tmp_yay"'"/yay && makepkg -si'
   rm -rf "$tmp_yay" || true
   ok "yay installed"
 else
@@ -90,7 +89,7 @@ aur_packages=(
 
 if (( ${#aur_packages[@]} )); then
   rule
-  run "Installing AUR packages with yay" yay -S --needed --noconfirm "${aur_packages[@]}"
+  run "Installing AUR packages with yay" yay -S --needed "${aur_packages[@]}"
   rule
 else
   warn "No AUR packages specified. Skipping yay installs."
