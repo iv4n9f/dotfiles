@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ===== Colors =====
+BLACK="\033[30m"
+RED="\033[31m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+BLUE="\033[34m"
+MAGENTA="\033[35m"
+CYAN="\033[36m"
+WHITE="\033[37m"
+
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# ===== Delimiters =====
+delimiter="#####################################################################"
+separator="---------------------------------------------------------------------"
+
+# ===== Info =====
+title="Dotfiles Auto Install"
+author="iv4n9f"
+license="MIT License"
+repo="https://github.com/iv4n9f/dotfiles"
+version="0.0.1"
+
+# ===== Banner =====
+while IFS= read -r line; do
+  printf "%b\n" "$line"
+done <<EOF
+${BOLD}${delimiter}${RESET}
+Title\t:\t${title}
+Author\t:\t${author}
+License\t:\t${license}
+Repo\t:\t${repo}
+Version\t:\t${version}
+${delimiter}
+EOF
+
+# ===== User limitations =====
+if [[ "$(id -u)" -eq 0 ]]; then
+  printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}Do not run as root. Use a regular user with sudo."
+  printf "%s\n" "$delimiter"
+  exit 1
+else
+  printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Running as regular user. sudo may prompt for password."
+fi
+
+# ===== System paths =====
+dir="$(dirname "$(readlink -f "$0")")"
+
+# sudo presence
+if ! command -v sudo >/dev/null 2>&1; then
+  printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}sudo not found. Install sudo and retry."
+  exit 1
+fi
+
+# ===== OS detection =====
+system="Unknown"
+if [[ -f /etc/os-release ]]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  case "${ID:-}" in
+    kali|ubuntu|arch)
+      system="$ID"
+      printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Detected OS: ${BOLD}${GREEN}${system}${RESET}."
+      ;;
+    *)
+      printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}Unsupported OS: ${BOLD}${RED}${ID:-unknown}${RESET}."
+      printf "%s\n" "$delimiter"
+      exit 1
+      ;;
+  esac
+else
+  printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}Cannot determine OS. /etc/os-release missing."
+  printf "%s\n" "$delimiter"
+  exit 1
+fi
+
+# ===== System folder =====
+system_folder="${dir}/config/system/${system}"
+
+# ===== Init script =====
+if [[ -x "${system_folder}/init" ]]; then
+  printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Found init for ${BOLD}${GREEN}${system}${RESET}. Executing..."
+  printf "%s\n" "$separator"
+  chmod +x "${system_folder}/init"
+  source "${system_folder}/init" $dir
+  printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Finished init for ${BOLD}${GREEN}${system}${RESET}."
+else
+  printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}No init script at ${BOLD}${YELLOW}${system_folder}/init${RESET}."
+  printf "%s\n" "$delimiter"
+  exit 1
+fi
+
+printf "%s\n" "$separator"

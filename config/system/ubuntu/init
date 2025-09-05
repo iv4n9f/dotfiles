@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ===== Colors =====
+BLACK="\033[30m"
+RED="\033[31m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+BLUE="\033[34m"
+MAGENTA="\033[35m"
+CYAN="\033[36m"
+WHITE="\033[37m"
+
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# ===== Delimiters =====
+delimiter="#####################################################################"
+separator="---------------------------------------------------------------------"
+
+# ===== Global Variables =====
+
+dir=$1
+
+# ===== Upgrade system =====
+
+printf "%b\n" "${BOLD}${CYAN}INFO\t:\t${RESET}Upgrading system packages. This may take a while..."
+sudo apt update > /dev/null 2>&1 && sudo apt upgrade -y > /dev/null 2>&1 && sudo apt autoremove -y > /dev/null 2>&1
+printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}System packages upgraded."
+printf "%s\n" "$separator"
+
+# ===== Install dependencies =====
+
+printf "%b\n" "${BOLD}${CYAN}INFO\t:\t${RESET}Installing essential dependencies..."
+sudo apt install -y git build-essential curl wget unzip dos2unix > /dev/null 2>&1
+printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Essential dependencies installed."
+printf "%s\n" "$separator"
+
+# ===== Install custom packages =====
+packages=(
+    bspwm
+    sxhkd
+    polybar
+    feh
+    rofi
+    jq
+    gnome-terminal
+    xclip
+    dconf-cli
+    bat
+    nitrogen
+    xorg
+    picom
+    lightdm
+    lightdm-gtk-greeter
+    dos2unix
+    wget
+    unzip
+    fonts-hack-ttf
+    gnome-themes-extra
+    zsh
+)
+
+printf "%b\n" "${BOLD}${CYAN}INFO\t:\t${RESET}Installing custom packages..."
+sudo apt install -y "${packages[@]}" > /dev/null 2>&1
+printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Custom packages installed."
+printf "%s\n" "$separator"
+
+# ===== Copy config files =====
+
+printf "%b\n" "${BOLD}${CYAN}INFO\t:\t${RESET}Copying config files..."
+chmod +x  $dir/../shared/bspwm/bspwmrc && chmod +x  $dir/../shared/bspwm/scripts/*
+mkdir -p $HOME/.config/bspwm
+cp -r $dir/../shared/bspwm/* $HOME/.config/bspwm/
+mkdir -p $HOME/.config/sxhkd
+cp -r $dir/../shared/sxhkd/* $HOME/.config/sxhkd/
+chmod +x $dir/../shared/polybar/launch.sh && chmod +x $dir/../shared/polybar/modules/*
+mkdir -p $HOME/.config/polybar
+cp -r $dir/../shared/polybar/* $HOME/.config/polybar/
+cp /etc/X11/xinit/xinitrc $HOME/.xinitrc
+echo "exec bspwm" > $HOME/.xinitrc
+chmod +x $HOME/.xinitrc
+mkdir -p $HOME/.config/picom
+cp -r $dir/../shared/picom/* $HOME/.config/picom/
+
+# ===== Download && install nerd fonts =====
+
+echo -e "${BOLD}${CYAN}INFO\t:\t${RESET}Downloading and installing nerd fonts..."
+mkdir -p $HOME/Downloads
+cd $HOME/Downloads
+wget "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/Hack.zip"
+unzip Hack.zip -d hack-fonts
+sudo mkdir -p /usr/share/fonts/truetype/hack
+sudo cp hack-fonts/*.ttf /usr/share/fonts/truetype/hack/.
+sudo fc-cache -f -v
+rm -rf Hack.zip hack-fonts
+cd $dir
+
+echo -e "${BOLD}${GREEN}OK\t:\t${RESET}Nerd fonts installed."
+printf "%s\n" "$separator"
+
+# ===== Download && Install rofi =====
+
+echo -e "${BOLD}${CYAN}INFO\t:\t${RESET}Downloading and installing rofi themes..."
+git clone https://github.com/lr-tech/rofi-themes-collection.git
+cd rofi-themes-collection
+mkdir -p ~/.local/share/rofi/themes/
+cp themes/* ~/.local/share/rofi/themes/
+cd $dir
+sudo cp $dir/../shared/utils/lightdm-gtk-greeter.conf /etc/lightdm/lightdm-gtk-greeter.conf
+cp -r $dir/../shared/img $HOME/.
+rm -rf rofi-themes-collection
+cd $dir
+
+echo -e "${BOLD}${GREEN}OK\t:\t${RESET}Rofi themes installed."
+printf "%s\n" "$separator"
+
+# ===== Set zsh as default shell =====
+
+chsh -s /usr/bin/zsh
+cat $dir/../shared/utils/alias >> $HOME/.zshrc
+source $HOME/.zshrc
+printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Set zsh as default shell."
+printf "%s\n" "$separator"
+
+# ===== Verify scripts format and add to PATH =====
+
+printf "%b\n" "${BOLD}${CYAN}INFO\t:\t${RESET}Verifying scripts format and adding to PATH..."
+dos2unix $dir/../shared/utils/bin/*
+sudo cp $dir/../shared/utils/bin/* /usr/local/bin/.
+printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Scripts format verified and added to PATH."
+sudo chmod 775 /usr/local/bin/set_target
+printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Set permissions for set_target script."
+printf "%s\n" "$separator"
+
+# ===== Apply latest config =====
+
+printf "%b\n" "${BOLD}${CYAN}INFO\t:\t${RESET}Applying latest config..."
+/usr/local/bin/set_target 8.8.8.8
+chmod +x $dir/../shared/utils/gnome-terminal.sh
+$dir/../shared/utils/gnome-terminal.sh $dir/../shared/utils/gnome.conf
+printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Latest config applied."
+printf "%s\n" "$separator"
+
+# ===== End of install script =====
+printf "%b\n" "${BOLD}${GREEN}SUCCESS\t:\t${RESET}Installation complete. Please reboot the system to apply all changes."
+printf "%s\n" "$separator"
