@@ -65,7 +65,7 @@ run "Installing prerequisites" sudo apt-get install -y ${packages[@]}
 
 
 cp -r $dir/shared/bspwm ~/.config/bspwm
-cp $dir/shared/sxhkd ~/.config/sxhkd
+cp -r $dir/shared/sxhkd ~/.config/sxhkd
 chmod u+x ~/.config/bspwm/bspwmrc
 
 # ===== POLYBAR =====
