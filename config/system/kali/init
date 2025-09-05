@@ -4,10 +4,10 @@ set -euo pipefail
 # ===== UI helpers =====
 BOLD="\033[1m"; RESET="\033[0m"
 RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; CYAN="\033[36m"
-info()  { printf "%b\n" "${BOLD}${CYAN}INFO\t:\t${RESET}" "$*"; }
-ok()    { printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}"   "$*"; }
-warn()  { printf "%b\n" "${BOLD}${YELLOW}WARN\t:\t${RESET}" "$*"; }
-error() { printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}"  "$*"; }
+info()  { printf "%b %s\n" "${BOLD}${CYAN}INFO\t:\t${RESET}"  "$*"; }
+ok()    { printf "%b %s\n" "${BOLD}${GREEN}OK\t:\t${RESET}"   "$*"; }
+warn()  { printf "%b %s\n" "${BOLD}${YELLOW}WARN\t:\t${RESET}" "$*"; }
+error() { printf "%b %s\n" "${BOLD}${RED}ERROR\t:\t${RESET}"  "$*"; }
 rule()  { printf "%s\n" "---------------------------------------------------------------------"; }
 die()   { error "$*"; exit 1; }
 run() {
@@ -65,7 +65,7 @@ run "Cloning rofi themes" bash -c '
 '
 
 # ===== Configure LightDM =====
-run "Configuring LightDM greeter" bash -c "sudo cp \"$DIR/../shared/utils/lightdm-gtk-greeter.conf\" /etc/lightdm/lightdm-gtk-greeter.conf"
+run "Configuring LightDM greeter" bash -c "sudo cp \"$DIR/shared/utils/lightdm-gtk-greeter.conf\" /etc/lightdm/lightdm-gtk-greeter.conf"
 
 # ===== Creating folders =====
 run "Creating XDG-like folders" bash -c 'mkdir -p "$HOME"/{Pictures,Downloads,Documents,Videos,Music,Projects,Repositories,Software,Credentials,Templates,Public,Desktop}'
@@ -89,27 +89,27 @@ cd "$DIR"
 info "Copying configuration files"
 
 run "bspwm configs" bash -c '
-  cp -r "'"$DIR"'/../shared/bspwm" "$HOME/.config/bspwm"
+  cp -r "'"$DIR"'/shared/bspwm" "$HOME/.config/bspwm"
   chmod +x "$HOME/.config/bspwm/bspwmrc" || true
 '
 
 run "sxhkd configs" bash -c '
-  cp -r "'"$DIR"'/../shared/sxhkd" "$HOME/.config/sxhkd"
+  cp -r "'"$DIR"'/shared/sxhkd" "$HOME/.config/sxhkd"
 '
 
 run "zsh config" bash -c '
-  cp -r "'"$DIR"'/../shared/utils/zshrc" "$HOME/.zshrc"
+  cp -r "'"$DIR"'/shared/utils/zshrc" "$HOME/.zshrc"
 '
 
 run "polybar configs" bash -c '
-  cp -r "'"$DIR"'/../shared/polybar" "$HOME/.config/polybar"
+  cp -r "'"$DIR"'/shared/polybar" "$HOME/.config/polybar"
   chmod +x "$HOME/.config/polybar/launch.sh" || true
   chmod +x "$HOME/.config/polybar/modules/"* || true
 '
 
 run "wallpaper" bash -c '
   mkdir -p "$HOME/Pictures"
-  cp -r "'"$DIR"'/../shared/imgs/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
+  cp -r "'"$DIR"'/shared/imgs/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
 '
 
 run "xinitrc" bash -c '
