@@ -65,14 +65,14 @@ run "Installing prerequisites" sudo apt-get install -y ${packages[@]}
 # ===== BSPWM =====
 
 
-sudo cp -r $dir/shared/bspwm ~/.config/bspwm
-sudo cp -r $dir/shared/sxhkd ~/.config/sxhkd
+sudo cp -r $dir/shared/bspwm ~/.config/
+sudo cp -r $dir/shared/sxhkd ~/.config/
 chmod u+x ~/.config/bspwm/bspwmrc
 
 # ===== POLYBAR =====
 
-sudo cp -r $dir/shared/polybar ~/.config/polybar
-sudo cp -r $dir/shared/polybar/modules ~/.config/polybar/modules
+sudo cp -r $dir/shared/polybar ~/.config/
+sudo cp -r $dir/shared/polybar/modules ~/.config/polybar/
 chmod u+x ~/.config/polybar/launch.sh
 chmod u+x ~/.config/polybar/modules/*
 
