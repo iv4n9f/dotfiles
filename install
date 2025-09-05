@@ -25,7 +25,7 @@ title="Dotfiles Auto Install"
 author="iv4n9f"
 license="MIT License"
 repo="https://github.com/iv4n9f/dotfiles"
-version="0.0.7"
+version="0.0.8"
 
 # ===== Banner =====
 while IFS= read -r line; do
