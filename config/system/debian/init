@@ -82,7 +82,7 @@ chmod u+x ~/.xinitrc
 
 # ===== LIGHTDM =====
 
-cp $dir/shared/utils/lightdm-gtk-greeter.conf /etc/lightdm/lightdm-gtk-greeter.conf
+sudo cp $dir/shared/utils/lightdm-gtk-greeter.conf /etc/lightdm/lightdm-gtk-greeter.conf
 
 sudo systemctl enable lightdm
 sudo systemctl start lightdm
