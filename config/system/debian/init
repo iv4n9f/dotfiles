@@ -100,7 +100,7 @@ run "Copy wallpaper" bash -c '
 run "Write .xinitrc" bash -c 'printf "exec bspwm\n" > "$HOME/.xinitrc"; chmod +x "$HOME/.xinitrc" || true'
 
 # ===== Shell and Display Manager =====
-run "Setting zsh as default shell" chsh -s "$(command -v zsh)" || warn "Could not change shell (non-interactive?)"
+run "Setting zsh as default shell" sudo usermod -s "$(command -v zsh)" "$USER" || warn "Could not change shell (needs sudo)"
 
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   run "Enabling lightdm.service" sudo systemctl enable lightdm.service || warn "Could not enable lightdm.service"
