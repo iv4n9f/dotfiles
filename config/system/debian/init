@@ -53,6 +53,7 @@ packages=(
   vim
   lightdm
   lightdm-gtk-greeter
+  feh
 )
 
 export DEBIAN_FRONTEND=noninteractive
@@ -83,6 +84,7 @@ chmod u+x ~/.xinitrc
 # ===== LIGHTDM =====
 
 sudo cp $dir/shared/utils/lightdm-gtk-greeter.conf /etc/lightdm/lightdm-gtk-greeter.conf
+sudo cp $dir/shared/img/wallpaper.jpg /usr/share/backgrounds/wallpaper.jpg
 
-sudo systemctl enable lightdm
-sudo systemctl start lightdm
+sudo systemctl enable lightdm > /dev/null 2>&1 || true
+sudo systemctl start lightdm > /dev/null 2>&1 || true
