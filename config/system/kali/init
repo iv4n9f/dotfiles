@@ -92,14 +92,9 @@ run "bspwm configs" bash -c '
   cp -r "'"$DIR"'/shared/bspwm" "$HOME/.config/bspwm"
   chmod +x "$HOME/.config/bspwm/bspwmrc" || true
 '
+cp -r "'"$DIR"'/shared/sxhkd" "$HOME/.config/sxhkd"
 
-run "sxhkd configs" bash -c '
-  cp -r "'"$DIR"'/shared/sxhkd" "$HOME/.config/sxhkd"
-'
-
-run "zsh config" bash -c '
-  cp -r "'"$DIR"'/shared/utils/zshrc" "$HOME/.zshrc"
-'
+cp -r "'"$DIR"'/shared/utils/zshrc" "$HOME/.zshrc"
 
 run "polybar configs" bash -c '
   cp -r "'"$DIR"'/shared/polybar" "$HOME/.config/polybar"
@@ -107,15 +102,11 @@ run "polybar configs" bash -c '
   chmod +x "$HOME/.config/polybar/modules/"* || true
 '
 
-run "wallpaper" bash -c '
-  mkdir -p "$HOME/Pictures"
-  cp -r "'"$DIR"'/shared/imgs/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
-'
+mkdir -p "$HOME/Pictures"
+cp -r "'"$DIR"'/shared/imgs/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
 
-run "xinitrc" bash -c '
-  printf "exec bspwm\n" > "$HOME/.xinitrc"
-  chmod +x "$HOME/.xinitrc" || true
-'
+printf "exec bspwm\n" > "$HOME/.xinitrc"
+chmod +x "$HOME/.xinitrc" || true
 
 # ===== Shell and Display Manager =====
 run "Setting zsh as default shell" chsh -s "$(command -v zsh)" || warn "Could not change shell (non-interactive?)"
