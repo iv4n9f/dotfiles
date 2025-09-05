@@ -37,7 +37,7 @@ Author\t:\t${author}
 License\t:\t${license}
 Repo\t:\t${repo}
 Version\t:\t${version}
-${delimiter}
+${BOLD}${delimiter}
 EOF
 
 # ===== User limitations =====
