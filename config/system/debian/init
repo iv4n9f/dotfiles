@@ -103,7 +103,7 @@ run "Copy polybar configs"            bash -c '
 '
 run "Copy wallpaper"                  bash -c '
   mkdir -p "$HOME/Pictures"
-  cp "'"$DIR"'/shared/imgs/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
+  cp "'"$DIR"'/shared/img/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
 '
 run "Write .xinitrc"                  bash -c 'printf "exec bspwm\n" > "$HOME/.xinitrc"; chmod +x "$HOME/.xinitrc" || true'
 
