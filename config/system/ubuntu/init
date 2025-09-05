@@ -20,18 +20,18 @@ run() {
   ok "$msg"
 }
 
-# ===== Args =====
-DIR="${1:-$PWD}"
+# ===== Paths: repo root basado en este script =====
+SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+DIR="${1:-$REPO_ROOT}"     # permite pasar raíz alterna, por defecto raíz del repo
 [ -d "$DIR" ] || die "Directorio inválido: $DIR"
 
 # ===== Update system =====
-
 run "Updating APT package index" sudo apt-get update -qq
 run "Upgrading system packages" sudo apt-get dist-upgrade -y -o Dpkg::Options::="--force-confnew"
 run "Removing unused packages" sudo apt-get autoremove -y
 
 # ===== Packages (Debian/Ubuntu) =====
-# NOTA: usa 'xorg' y 'xinit' en Debian/Ubuntu. No 'xorg-server'/'xorg-xinit'.
 packages=(
   libxcb-xinerama0-dev libxcb-icccm4-dev libxcb-randr0-dev libxcb-util0-dev libxcb-ewmh-dev libxcb-keysyms1-dev libxcb-shape0-dev
   polybar rofi jq gnome-terminal xclip dconf-cli bat
@@ -49,8 +49,6 @@ packages=(
   bspwm sxhkd
   zsh-autosuggestions zsh-syntax-highlighting
 )
-
-
 run "Installing required packages (build deps included)" sudo apt-get install -y "${packages[@]}"
 
 # ===== Rofi Themes =====
@@ -65,16 +63,17 @@ run "Cloning rofi themes" bash -c '
 '
 
 # ===== Configure LightDM =====
-run "Configuring LightDM greeter" bash -c "sudo cp \"$DIR/shared/utils/lightdm-gtk-greeter.conf\" /etc/lightdm/lightdm-gtk-greeter.conf"
+run "Ensuring LightDM dirs" sudo mkdir -p /etc/lightdm
+run "Configuring LightDM greeter" sudo cp "$DIR/shared/utils/lightdm-gtk-greeter.conf" /etc/lightdm/lightdm-gtk-greeter.conf
 
 # ===== Creating folders =====
 run "Creating XDG-like folders" bash -c 'mkdir -p "$HOME"/{Pictures,Downloads,Documents,Videos,Music,Projects,Repositories,Software,Credentials,Templates,Public,Desktop}'
-
 
 # ===== Install Hack Nerd Font =====
 NF_VER="v3.2.1"
 run "Installing Hack Nerd Font ${NF_VER}" bash -c '
   set -e
+  mkdir -p "$HOME/Downloads"
   cd "$HOME/Downloads"
   wget -q "https://github.com/ryanoasis/nerd-fonts/releases/download/'"$NF_VER"'/Hack.zip"
   unzip -qq Hack.zip -d hack-fonts
@@ -83,38 +82,29 @@ run "Installing Hack Nerd Font ${NF_VER}" bash -c '
   sudo fc-cache -f >/dev/null 2>&1 || true
   rm -rf Hack.zip hack-fonts
 '
-cd "$DIR"
 
 # ===== Copy config files =====
-info "Copying configuration files"
-
-run "bspwm configs" bash -c '
-  cp -r "'"$DIR"'/shared/bspwm" "$HOME/.config/bspwm"
-  chmod +x "$HOME/.config/bspwm/bspwmrc" || true
-'
-cp -r "$DIR/shared/sxhkd" "$HOME/.config/sxhkd"
-
-cp -r "$DIR/shared/utils/zshrc" "$HOME/.zshrc"
-
-run "polybar configs" bash -c '
-  cp -r "'"$DIR"'/shared/polybar" "$HOME/.config/polybar"
+run "Ensuring ~/.config" bash -c 'mkdir -p "$HOME/.config" "$HOME/.config/polybar/modules" "$HOME/.config/bspwm" "$HOME/.config/sxhkd"'
+run "Copy bspwm configs"  cp -r "$DIR/shared/bspwm/."  "$HOME/.config/bspwm/"
+run "Copy sxhkd configs"  cp -r "$DIR/shared/sxhkd/."  "$HOME/.config/sxhkd/"
+run "Copy zsh config"     cp     "$DIR/shared/utils/zshrc" "$HOME/.zshrc"
+run "Copy polybar configs" bash -c '
+  cp -r "'"$DIR"'/shared/polybar/." "$HOME/.config/polybar/"
   chmod +x "$HOME/.config/polybar/launch.sh" || true
-  chmod +x "$HOME/.config/polybar/modules/"* || true
+  find "$HOME/.config/polybar/modules" -type f -print0 | xargs -0 -r chmod +x || true
 '
-
-mkdir -p "$HOME/Pictures"
-cp -r "$DIR/shared/imgs/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
-
-printf "exec bspwm\n" > "$HOME/.xinitrc"
-chmod +x "$HOME/.xinitrc" || true
+run "Copy wallpaper" bash -c '
+  mkdir -p "$HOME/Pictures"
+  cp "'"$DIR"'/shared/imgs/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
+'
+run "Write .xinitrc" bash -c 'printf "exec bspwm\n" > "$HOME/.xinitrc"; chmod +x "$HOME/.xinitrc" || true'
 
 # ===== Shell and Display Manager =====
 run "Setting zsh as default shell" chsh -s "$(command -v zsh)" || warn "Could not change shell (non-interactive?)"
 
-# Habilitar DM solo si systemd está presente y no es chroot
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   run "Enabling lightdm.service" sudo systemctl enable lightdm.service || warn "Could not enable lightdm.service"
-  run "Starting lightdm.service" sudo systemctl start lightdm.service || warn "Could not start lightdm.service"
+  run "Starting lightdm.service"  sudo systemctl start  lightdm.service || warn "Could not start lightdm.service"
 else
   warn "Systemd no disponible. Omite enable/start de lightdm."
 fi
