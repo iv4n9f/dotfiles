@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+clear
+
 # ===== Colors =====
 BLACK="\033[30m"
 RED="\033[31m"
@@ -23,7 +25,7 @@ title="Dotfiles Auto Install"
 author="iv4n9f"
 license="MIT License"
 repo="https://github.com/iv4n9f/dotfiles"
-version="0.0.1"
+version="0.0.3"
 
 # ===== Banner =====
 while IFS= read -r line; do
@@ -62,7 +64,7 @@ if [[ -f /etc/os-release ]]; then
   # shellcheck disable=SC1091
   . /etc/os-release
   case "${ID:-}" in
-    kali|ubuntu|arch)
+    kali|debian|ubuntu|arch)
       system="$ID"
       printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Detected OS: ${BOLD}${GREEN}${system}${RESET}."
       ;;
@@ -81,17 +83,41 @@ fi
 # ===== System folder =====
 system_folder="${dir}/config/system/${system}"
 
+if [[ -f "${system_folder}/init" ]]; then
+  chmod +x "${system_folder}/init"
+else
+  printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}Init script missing at ${BOLD}${YELLOW}${system_folder}/init${RESET}."
+  printf "%s\n" "$delimiter"
+  exit 1
+fi
+
 # ===== Init script =====
 if [[ -x "${system_folder}/init" ]]; then
   printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Found init for ${BOLD}${GREEN}${system}${RESET}. Executing..."
   printf "%s\n" "$separator"
-  chmod +x "${system_folder}/init"
-  source "${system_folder}/init" $dir
+  # pass $dir as arg to init
+  # shellcheck disable=SC1090
+  source "${system_folder}/init" "$dir"
   printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}Finished init for ${BOLD}${GREEN}${system}${RESET}."
 else
-  printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}No init script at ${BOLD}${YELLOW}${system_folder}/init${RESET}."
+  printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}No executable init script at ${BOLD}${YELLOW}${system_folder}/init${RESET}."
   printf "%s\n" "$delimiter"
   exit 1
+fi
+
+printf "%s\n" "$separator"
+
+# ===== Restart LightDM =====
+if systemctl is-active lightdm >/dev/null 2>&1; then
+  printf "%b\n" "${BOLD}${CYAN}INFO\t:\t${RESET}Restarting LightDM..."
+  if sudo systemctl restart lightdm; then
+    printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}LightDM restarted successfully."
+  else
+    printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}Failed to restart LightDM."
+    exit 1
+  fi
+else
+  printf "%b\n" "${BOLD}${YELLOW}WARN\t:\t${RESET}LightDM is not active. Skipping restart."
 fi
 
 printf "%s\n" "$separator"

@@ -12,7 +12,6 @@ error() { printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}$*"; }
 rule()  { printf "%s\n" "---------------------------------------------------------------------"; }
 die()   { error "$*"; exit 1; }
 
-# Run commands with clear error messages
 run() {
   local msg="$1"; shift
   info "$msg"
@@ -33,40 +32,70 @@ if [[ "$(id -u)" -eq 0 ]]; then
   die "Do not run this script as root. Use a normal user with sudo privileges."
 fi
 
-# ===== Debian-like check (APT) =====
+# ===== Arch check =====
 if [[ -f /etc/os-release ]]; then
-  # shellcheck disable=SC1091
   . /etc/os-release
-  case "${ID:-}" in
-    debian|ubuntu|kali|linuxmint|pop) : ;;
-    *) die "Unsupported OS for APT: ${ID:-unknown}" ;;
-  esac
+  [[ "${ID:-}" == "arch" ]] || die "This init is for Arch Linux. Detected: ${ID:-unknown}"
 else
   die "Cannot read /etc/os-release"
 fi
 
 # ===== Pre-reqs =====
 command -v sudo >/dev/null 2>&1 || die "sudo is not installed"
-export DEBIAN_FRONTEND=noninteractive
+command -v pacman >/dev/null 2>&1 || die "pacman not found"
 
-# ===== Upgrade system =====
+# ===== System upgrade =====
 rule
-run "Updating APT package index" sudo apt-get update -y -qq
-run "Upgrading system packages" sudo apt-get dist-upgrade -y -o Dpkg::Options::="--force-confnew"
-run "Removing unused packages" sudo apt-get autoremove -y
+run "Refreshing package databases and upgrading system" sudo pacman -Syu --noconfirm
 rule
 
 # ===== Install packages =====
+# Notes:
+# - base-devel in place of build-essential
+# - dconf-cli ≈ 'dconf' in Arch
+# - xorg / xinit split in Arch
+# - fonts via ttf-hack-nerd (no manual zip)
 packages=(
-  git build-essential curl wget unzip dos2unix
+  git base-devel curl wget unzip dos2unix
   bspwm sxhkd polybar feh rofi jq
-  gnome-terminal xclip dconf-cli bat nitrogen
-  xorg picom lightdm lightdm-gtk-greeter
-  fonts-hack-ttf gnome-themes-extra zsh
+  gnome-terminal xclip dconf bat nitrogen
+  xorg-server xorg-xinit picom lightdm lightdm-gtk-greeter
+  ttf-hack-nerd gnome-themes-extra zsh
 )
+
 rule
-run "Installing required packages" sudo apt-get install -y "${packages[@]}"
+run "Installing required packages" sudo pacman -S --needed --noconfirm "${packages[@]}"
 rule
+
+# ===== YAY (AUR helper) =====
+
+# ===== AUR helper: yay =====
+rule
+if ! command -v yay >/dev/null 2>&1; then
+  info "Installing yay (AUR helper)"
+  tmp_yay="$(mktemp -d)"
+  run "Cloning yay-bin from AUR" bash -c 'cd "'"$tmp_yay"'" && git clone https://aur.archlinux.org/yay-bin.git'
+  run "Building and installing yay" bash -c 'cd "'"$tmp_yay"'/yay-bin && makepkg -si --noconfirm'
+  rm -rf "$tmp_yay" || true
+  ok "yay installed"
+else
+  ok "yay already installed"
+fi
+rule
+
+# ===== AUR packages via yay =====
+aur_packages=(
+    brave-bin
+)
+
+if (( ${#aur_packages[@]} )); then
+  rule
+  run "Installing AUR packages with yay" yay -S --needed --noconfirm "${aur_packages[@]}"
+  rule
+else
+  warn "No AUR packages specified. Skipping yay installs."
+fi
+
 
 # ===== Copy config files =====
 rule
@@ -103,9 +132,6 @@ else
 fi
 
 # Xinit and Picom
-if [[ -f /etc/X11/xinit/xinitrc ]]; then
-  cp /etc/X11/xinit/xinitrc "$HOME/.xinitrc" || warn "Could not copy xinitrc"
-fi
 printf "exec bspwm\n" > "$HOME/.xinitrc" || die "Writing ~/.xinitrc"
 chmod +x "$HOME/.xinitrc" || true
 
@@ -118,31 +144,19 @@ else
 fi
 rule
 
-# ===== Nerd Fonts: Hack =====
-rule
-tmpdir="$(mktemp -d)"
-cleanup_fonts() { rm -rf "$tmpdir"; }
-trap cleanup_fonts EXIT
-
-run "Downloading Hack Nerd Font" bash -c 'cd "'"$tmpdir"'" && wget -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/Hack.zip'
-run "Unzipping Hack font" bash -c 'cd "'"$tmpdir"'" && unzip -qq Hack.zip -d hack-fonts'
-run "Installing Hack font" sudo bash -c 'install -d /usr/share/fonts/truetype/hack && cp "'"$tmpdir"'/hack-fonts/"*.ttf" /usr/share/fonts/truetype/hack/'
-run "Refreshing font cache" sudo fc-cache -f >/dev/null
-rule
-
 # ===== Rofi themes =====
 rule
 rtmp="$(mktemp -d)"
-trap 'rm -rf "$rtmp"; cleanup_fonts' EXIT
+trap 'rm -rf "$rtmp"' EXIT
 run "Cloning rofi-themes-collection" git clone --depth=1 https://github.com/lr-tech/rofi-themes-collection.git "$rtmp/rofi"
 run "Installing rofi themes" bash -c 'install -d "$HOME/.local/share/rofi/themes" && cp -r "'"$rtmp/rofi/themes/"'* "$HOME/.local/share/rofi/themes/"'
-# lightdm greeter
+# LightDM greeter conf
 if [[ -f "$dir/../shared/utils/lightdm-gtk-greeter.conf" ]]; then
   run "Installing lightdm-gtk-greeter.conf" sudo cp "$dir/../shared/utils/lightdm-gtk-greeter.conf" /etc/lightdm/lightdm-gtk-greeter.conf
 else
   warn "Missing lightdm-gtk-greeter.conf"
 fi
-# images
+# Images
 if [[ -d "$dir/../shared/img" ]]; then
   cp -r "$dir/../shared/img" "$HOME/" || warn "Copying images"
 fi
@@ -213,5 +227,14 @@ fi
 rule
 
 # ===== Done =====
-ok "Installation completed. Please reboot the system to apply changes."
+ok "Installation completed. You can restart LightDM now if you want to switch to the greeter."
+
+# Optional auto-restart (uncomment if desired; this will kill the current session)
+# if systemctl is-active lightdm >/dev/null 2>&1; then
+#   info "Restarting LightDM..."
+#   sudo systemctl restart lightdm || die "Failed to restart LightDM"
+# else
+#   warn "LightDM is not active. Skipping restart."
+# fi
+
 rule
