@@ -20,16 +20,24 @@ run() {
   ok "$msg"
 }
 
+# ===== Privilegios y entorno APT no interactivo =====
+if [ "${EUID:-$(id -u)}" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
+export DEBIAN_FRONTEND=noninteractive
+APT_OPTS=(-y -o Dpkg::Options::="--force-confnew" -o APT::Color="0")
+
+# Usuario objetivo para usermod (evita cambiar el shell a root si vienes con sudo)
+TARGET_USER="${SUDO_USER:-${USER}}"
+
 # ===== Paths: repo root basado en este script =====
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
-DIR="${1:-$REPO_ROOT}"     # permite pasar raíz alterna, por defecto raíz del repo
+DIR="${1:-$REPO_ROOT}"
 [ -d "$DIR" ] || die "Directorio inválido: $DIR"
 
 # ===== Update system =====
-run "Updating APT package index" sudo apt-get update -qq
-run "Upgrading system packages" sudo apt-get dist-upgrade -y -o Dpkg::Options::="--force-confnew"
-run "Removing unused packages" sudo apt-get autoremove -y
+run "Updating APT package index"      $SUDO apt-get update -qq
+run "Upgrading system packages"       $SUDO apt-get dist-upgrade "${APT_OPTS[@]}"
+run "Removing unused packages"        $SUDO apt-get autoremove -y
 
 # ===== Packages (Debian/Ubuntu) =====
 packages=(
@@ -49,7 +57,7 @@ packages=(
   bspwm sxhkd
   zsh-autosuggestions zsh-syntax-highlighting
 )
-run "Installing required packages (build deps included)" sudo apt-get install -y "${packages[@]}"
+run "Installing required packages"    $SUDO apt-get install "${APT_OPTS[@]}" "${packages[@]}"
 
 # ===== Rofi Themes =====
 run "Cloning rofi themes" bash -c '
@@ -63,48 +71,55 @@ run "Cloning rofi themes" bash -c '
 '
 
 # ===== Configure LightDM =====
-run "Ensuring LightDM dirs" sudo mkdir -p /etc/lightdm
-run "Configuring LightDM greeter" sudo cp "$DIR/shared/utils/lightdm-gtk-greeter.conf" /etc/lightdm/lightdm-gtk-greeter.conf
+run "Ensuring LightDM dirs"           $SUDO mkdir -p /etc/lightdm
+run "Configuring LightDM greeter"     $SUDO cp "$DIR/shared/utils/lightdm-gtk-greeter.conf" /etc/lightdm/lightdm-gtk-greeter.conf
 
 # ===== Creating folders =====
-run "Creating XDG-like folders" bash -c 'mkdir -p "$HOME"/{Pictures,Downloads,Documents,Videos,Music,Projects,Repositories,Software,Credentials,Templates,Public,Desktop}'
+run "Creating XDG-like folders"       bash -c 'mkdir -p "$HOME"/{Pictures,Downloads,Documents,Videos,Music,Projects,Repositories,Software,Credentials,Templates,Public,Desktop}'
 
 # ===== Install Hack Nerd Font =====
 NF_VER="v3.2.1"
-run "Installing Hack Nerd Font ${NF_VER}" bash -c '
+run "Installing Hack Nerd Font $NF_VER" bash -c '
   set -e
   mkdir -p "$HOME/Downloads"
   cd "$HOME/Downloads"
   wget -q "https://github.com/ryanoasis/nerd-fonts/releases/download/'"$NF_VER"'/Hack.zip"
   unzip -qq Hack.zip -d hack-fonts
-  sudo mkdir -p /usr/share/fonts/truetype/hack
-  sudo cp -r hack-fonts/*.ttf /usr/share/fonts/truetype/hack/
-  sudo fc-cache -f >/dev/null 2>&1 || true
+  '"$SUDO"' mkdir -p /usr/share/fonts/truetype/hack
+  '"$SUDO"' cp -r hack-fonts/*.ttf /usr/share/fonts/truetype/hack/
+  '"$SUDO"' fc-cache -f >/dev/null 2>&1 || true
   rm -rf Hack.zip hack-fonts
 '
 
 # ===== Copy config files =====
-run "Ensuring ~/.config" bash -c 'mkdir -p "$HOME/.config" "$HOME/.config/polybar/modules" "$HOME/.config/bspwm" "$HOME/.config/sxhkd"'
-run "Copy bspwm configs"  cp -r "$DIR/shared/bspwm/."  "$HOME/.config/bspwm/"
-run "Copy sxhkd configs"  cp -r "$DIR/shared/sxhkd/."  "$HOME/.config/sxhkd/"
-run "Copy zsh config"     cp     "$DIR/shared/utils/zshrc" "$HOME/.zshrc"
-run "Copy polybar configs" bash -c '
+run "Ensuring ~/.config tree"         bash -c 'mkdir -p "$HOME/.config" "$HOME/.config/polybar/modules" "$HOME/.config/bspwm" "$HOME/.config/sxhkd"'
+run "Copy bspwm configs"              cp -r "$DIR/shared/bspwm/."  "$HOME/.config/bspwm/"
+run "Copy sxhkd configs"              cp -r "$DIR/shared/sxhkd/."  "$HOME/.config/sxhkd/"
+run "Copy zsh config"                 cp     "$DIR/shared/utils/zshrc" "$HOME/.zshrc"
+run "Copy polybar configs"            bash -c '
   cp -r "'"$DIR"'/shared/polybar/." "$HOME/.config/polybar/"
   chmod +x "$HOME/.config/polybar/launch.sh" || true
   find "$HOME/.config/polybar/modules" -type f -print0 | xargs -0 -r chmod +x || true
 '
-run "Copy wallpaper" bash -c '
+run "Copy wallpaper"                  bash -c '
   mkdir -p "$HOME/Pictures"
-  cp "'"$DIR"'/shared/img/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
+  cp "'"$DIR"'/shared/imgs/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
 '
-run "Write .xinitrc" bash -c 'printf "exec bspwm\n" > "$HOME/.xinitrc"; chmod +x "$HOME/.xinitrc" || true'
+run "Write .xinitrc"                  bash -c 'printf "exec bspwm\n" > "$HOME/.xinitrc"; chmod +x "$HOME/.xinitrc" || true'
 
 # ===== Shell and Display Manager =====
-run "Setting zsh as default shell" sudo usermod -s "$(command -v zsh)" "$USER" || warn "Could not change shell (needs sudo)"
+# Cambiar shell sin prompt. Requiere root/sudo. Apunta al usuario real que lanzó el script.
+ZSH_PATH="$(command -v zsh || true)"
+if [ -n "$ZSH_PATH" ]; then
+  run "Setting zsh as default shell for $TARGET_USER" $SUDO usermod -s "$ZSH_PATH" "$TARGET_USER" || warn "Could not change shell"
+else
+  warn "zsh no encontrado en PATH. Omite cambio de shell."
+fi
 
+# Evita fallos en contenedores/chroot
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
-  run "Enabling lightdm.service" sudo systemctl enable lightdm.service || warn "Could not enable lightdm.service"
-  run "Starting lightdm.service"  sudo systemctl start  lightdm.service || warn "Could not start lightdm.service"
+  run "Enabling lightdm.service"      $SUDO systemctl enable lightdm.service || warn "Could not enable lightdm.service"
+  run "Starting lightdm.service"       $SUDO systemctl start  lightdm.service || warn "Could not start lightdm.service"
 else
   warn "Systemd no disponible. Omite enable/start de lightdm."
 fi
