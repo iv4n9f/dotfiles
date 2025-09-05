@@ -74,7 +74,7 @@ if ! command -v yay >/dev/null 2>&1; then
   info "Installing yay (AUR helper)"
   tmp_yay="$(mktemp -d)"
   run "Cloning yay-bin from AUR" bash -c 'cd "'"$tmp_yay"'" && git clone https://aur.archlinux.org/yay.git'
-  run "Building and installing yay" bash -c 'cd "'"$tmp_yay"'"/yay && makepkg -si'
+  run "Building and installing yay" bash -c 'cd "'"$tmp_yay"'"/yay && makepkg -si --noconfirm'
   rm -rf "$tmp_yay" || true
   ok "yay installed"
 else
@@ -89,7 +89,7 @@ aur_packages=(
 
 if (( ${#aur_packages[@]} )); then
   rule
-  run "Installing AUR packages with yay" yay -S --needed "${aur_packages[@]}"
+  run "Installing AUR packages with yay" yay -S --needed --noconfirm "${aur_packages[@]}"
   rule
 else
   warn "No AUR packages specified. Skipping yay installs."
@@ -148,7 +148,7 @@ rule
 rtmp="$(mktemp -d)"
 trap 'rm -rf "$rtmp"' EXIT
 run "Cloning rofi-themes-collection" git clone --depth=1 https://github.com/lr-tech/rofi-themes-collection.git "$rtmp/rofi"
-run "Installing rofi themes" bash -c 'install -d "$HOME/.local/share/rofi/themes" && cp -r "'"$rtmp/rofi/themes/"'* "$HOME/.local/share/rofi/themes/"'
+run "Installing rofi themes" bash -c 'install -d "$HOME/.local/share/rofi/themes" && cp -r "'"$rtmp/rofi/themes/"'"* "$HOME/.local/share/rofi/themes/"'
 # LightDM greeter conf
 if [[ -f "$dir/../shared/utils/lightdm-gtk-greeter.conf" ]]; then
   run "Installing lightdm-gtk-greeter.conf" sudo cp "$dir/../shared/utils/lightdm-gtk-greeter.conf" /etc/lightdm/lightdm-gtk-greeter.conf
