@@ -62,31 +62,43 @@ run "Upgrading system packages" sudo apt-get dist-upgrade -y
 run "Removing unused packages" sudo apt-get autoremove -y
 run "Installing prerequisites" sudo apt-get install -y ${packages[@]}
 
+# ===== PRE =====
+[ -n "${dir:-}" ] || die "Usa: $0 /ruta/al/repo"
+[ -d "$dir/shared" ] || die "No existe $dir/shared"
+HOME_DIR="$HOME"
+
 # ===== BSPWM =====
-
-
-sudo cp -r $dir/shared/bspwm ~/.config/
-sudo cp -r $dir/shared/sxhkd ~/.config/
-chmod u+x ~/.config/bspwm/bspwmrc
+install -d -m 755 "$HOME_DIR/.config/bspwm" "$HOME_DIR/.config/sxhkd"
+cp -a "$dir/shared/bspwm/." "$HOME_DIR/.config/bspwm/"
+cp -a "$dir/shared/sxhkd/." "$HOME_DIR/.config/sxhkd/"
+chmod u+x "$HOME_DIR/.config/bspwm/bspwmrc"
 
 # ===== POLYBAR =====
+install -d -m 755 "$HOME_DIR/.config/polybar"
+cp -a "$dir/shared/polybar/." "$HOME_DIR/.config/polybar/"
+chmod u+x "$HOME_DIR/.config/polybar/launch.sh"
+chmod u+x "$HOME_DIR/.config/polybar/modules/"* 2>/dev/null || true
 
-sudo cp -r $dir/shared/polybar ~/.config/
-sudo cp -r $dir/shared/polybar/modules ~/.config/polybar/
-chmod u+x ~/.config/polybar/launch.sh
-chmod u+x ~/.config/polybar/modules/*
+# ===== XINITRC =====
+# Si vas a usar LightDM, NO necesitas .xinitrc.
+if [ ! -f "$HOME_DIR/.xinitrc" ]; then
+  printf '%s\n' 'exec bspwm' > "$HOME_DIR/.xinitrc"
+  chmod u+x "$HOME_DIR/.xinitrc"
+fi
 
-cat << EOF >> ~/.xinitrc
-exec bspwm
-EOF
-chmod u+x ~/.xinitrc
-
-sudo chownd -R $USER:$USER ~/.config
+# ===== PROPIETARIO HOME =====
+# Nunca chown con sudo rutas fuera de /etc; aquí solo tu $HOME.
+chown -R "$USER:$USER" "$HOME_DIR/.config"
 
 # ===== LIGHTDM =====
+# Solo si eliges display manager. Si usas startx, omite esto.
+sudo install -D -m 644 \
+  "$dir/shared/utils/lightdm-gtk-greeter.conf" \
+  /etc/lightdm/lightdm-gtk-greeter.conf
 
-sudo cp $dir/shared/utils/lightdm-gtk-greeter.conf /etc/lightdm/lightdm-gtk-greeter.conf
-sudo cp $dir/shared/img/wallpaper.jpg /usr/share/backgrounds/wallpaper.jpg
+sudo install -D -m 644 \
+  "$dir/shared/img/wallpaper.jpg" \
+  /usr/share/backgrounds/wallpaper.jpg
 
-sudo systemctl enable lightdm > /dev/null 2>&1 || true
-sudo systemctl start lightdm > /dev/null 2>&1 || true
+sudo systemctl enable lightdm || true
+sudo systemctl start lightdm || true
