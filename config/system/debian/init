@@ -64,13 +64,13 @@ run "Installing prerequisites" sudo apt-get install -y ${packages[@]}
 # ===== BSPWM =====
 
 
-cp -r $dir/../shared/bspwm ~/.config/bspwm
-cp $dir/../shared/sxhkd ~/.config/sxhkd
+cp -r $dir/shared/bspwm ~/.config/bspwm
+cp $dir/shared/sxhkd ~/.config/sxhkd
 chmod u+x ~/.config/bspwm/bspwmrc
 
 # ===== POLYBAR =====
 
-cp -r $dir/../shared/polybar ~/.config/polybar
+cp -r $dir/shared/polybar ~/.config/polybar
 chmod u+x ~/.config/polybar/launch.sh
 chmod u+x ~/.config/polybar/modules/*
 
@@ -81,7 +81,7 @@ chmod u+x ~/.xinitrc
 
 # ===== LIGHTDM =====
 
-cp $dir/../shared/utils/lightdm-gtk-greeter.conf /etc/lightdm/lightdm-gtk-greeter.conf
+cp $dir/shared/utils/lightdm-gtk-greeter.conf /etc/lightdm/lightdm-gtk-greeter.conf
 
 sudo systemctl enable lightdm
 sudo systemctl start lightdm
