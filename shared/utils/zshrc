@@ -1,0 +1,24 @@
+# ===== Aliases =====
+alias ip4='ip -br -4 -c a'
+alias cat='batcat'
+
+# ===== Prompt =====
+# %m = hostname corto, %n = usuario, %~ = ruta con ~
+PROMPT='[%m@%n][%~] $ '
+
+# ===== Historial =====
+HISTFILE=~/.zsh_history
+HISTSIZE=100000
+SAVEHIST=100000
+setopt HIST_IGNORE_ALL_DUPS HIST_SAVE_NO_DUPS HIST_REDUCE_BLANKS
+setopt INC_APPEND_HISTORY SHARE_HISTORY
+
+# ===== Completion =====
+autoload -Uz compinit && compinit
+
+# ===== Plugins =====
+# Suponiendo paquetes instalados vía apt: zsh-autosuggestions zsh-syntax-highlighting
+source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
+
+source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh

@@ -4,209 +4,134 @@ set -euo pipefail
 # ===== UI helpers =====
 BOLD="\033[1m"; RESET="\033[0m"
 RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; CYAN="\033[36m"
-info()  { printf "%b\n" "${BOLD}${CYAN}INFO\t:\t${RESET}$*"; }
-ok()    { printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}$*"; }
-warn()  { printf "%b\n" "${BOLD}${YELLOW}WARN\t:\t${RESET}$*"; }
-error() { printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}$*"; }
+info()  { printf "%b\n" "${BOLD}${CYAN}INFO\t:\t${RESET}%s" "$*"; }
+ok()    { printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}%s"   "$*"; }
+warn()  { printf "%b\n" "${BOLD}${YELLOW}WARN\t:\t${RESET}%s" "$*"; }
+error() { printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}%s"  "$*"; }
 rule()  { printf "%s\n" "---------------------------------------------------------------------"; }
 die()   { error "$*"; exit 1; }
-run() { local msg="$1"; shift; info "$msg"; if ! "$@"; then error "Failed: $msg"; return 1; fi; ok "$msg"; }
+run() {
+  local msg="$1"; shift
+  info "$msg"
+  if ! "$@" > /dev/null 2>&1; then
+    error "Failed: $msg"
+    return 1
+  fi
+  ok "$msg"
+}
 
 # ===== Args =====
-[[ $# -ge 1 ]] || die "Missing argument: base path 'dir'. Usage: $0 /path/to/dir"
-dir="$(readlink -f "$1")"; [[ -d "$dir" ]] || die "Directory does not exist: $dir"
+DIR="${1:-$PWD}"
+[ -d "$DIR" ] || die "Directorio inválido: $DIR"
 
-# ===== Root / OS =====
-[[ "$(id -u)" -ne 0 ]] || die "Do not run as root. Use a normal user with sudo."
-[[ -f /etc/os-release ]] || die "Cannot read /etc/os-release"
-# shellcheck disable=SC1091
-. /etc/os-release
-case "${ID:-}" in debian|ubuntu|kali|linuxmint|pop) : ;; *) die "Unsupported OS for APT: ${ID:-unknown}";; esac
-
-command -v sudo >/dev/null 2>&1 || die "sudo is not installed"
-export DEBIAN_FRONTEND=noninteractive
-
-# ===== Upgrade system =====
+# ===== Update system =====
 rule
-run "Updating APT package index" sudo apt-get update -y -qq 
-run "Upgrading system packages" sudo apt-get dist-upgrade -y --fix-missing
+run "Updating APT package index" sudo apt-get update -qq
+run "Upgrading system packages" sudo apt-get dist-upgrade -y -o Dpkg::Options::="--force-confnew"
 run "Removing unused packages" sudo apt-get autoremove -y
 rule
 
-# ===== Install base packages (without picom/polybar) =====
+# ===== Packages (Debian/Ubuntu) =====
+# NOTA: usa 'xorg' y 'xinit' en Debian/Ubuntu. No 'xorg-server'/'xorg-xinit'.
 packages=(
-  git build-essential curl wget unzip dos2unix
-  bspwm sxhkd feh rofi jq
-  gnome-terminal xclip dconf-cli bat nitrogen
-  xorg lightdm lightdm-gtk-greeter
+  libxcb-xinerama0-dev libxcb-icccm4-dev libxcb-randr0-dev libxcb-util0-dev libxcb-ewmh-dev libxcb-keysyms1-dev libxcb-shape0-dev
+  polybar rofi jq gnome-terminal xclip dconf-cli bat
+  xorg xinit lightdm lightdm-gtk-greeter
   fonts-hack-ttf gnome-themes-extra zsh
+  git build-essential curl wget unzip dos2unix
   cmake meson ninja-build pkg-config python3-sphinx
-  libxext-dev libxcb1-dev libxcb-randr0-dev libxcb-composite0-dev
-  libxcb-image0-dev libxcb-ewmh-dev libxcb-icccm4-dev libxcb-xkb-dev
+  libxext-dev libxcb1-dev libxcb-composite0-dev libxcb-image0-dev libxcb-xkb-dev
   libxcb-xrm-dev libxcb-cursor-dev libasound2-dev libpulse-dev
   libjsoncpp-dev libmpdclient-dev libcurl4-openssl-dev libuv1-dev
-  libxcb-damage0-dev libxcb-xfixes0-dev libxcb-shape0-dev
-  libxcb-render-util0-dev libxcb-render0-dev libxcb-present-dev
-  libxcb-xinerama0-dev libpixman-1-dev libdbus-1-dev libconfig-dev
+  libxcb-damage0-dev libxcb-xfixes0-dev libxcb-render-util0-dev libxcb-render0-dev libxcb-present-dev
+  libpixman-1-dev libdbus-1-dev libconfig-dev
   libgl1-mesa-dev libpcre2-dev libevdev-dev uthash-dev libev-dev
-  x11-xserver-utils  # útil para tests de X
+  x11-xserver-utils
+  bspwm sxhkd
+  zsh-autosuggestions zsh-syntax-highlighting
 )
+
 rule
 run "Installing required packages (build deps included)" sudo apt-get install -y "${packages[@]}"
 rule
 
-# ===== picom: try package, fallback to build =====
-install_picom() {
-  if apt-cache show picom >/dev/null 2>&1; then
-    run "Installing picom from repository" sudo apt-get install -y picom && return 0
-  fi
-  warn "picom not available in repo. Building from source"
-  local t; t="$(mktemp -d)"
-  run "Cloning picom" bash -c 'cd "'"$t"'" && git clone https://github.com/yshui/picom.git'
-  run "Building picom" bash -c 'cd "'"$t"'/picom && meson setup --buildtype=release build && ninja -C build'
-  run "Installing picom" sudo bash -c 'cd "'"$t"'/picom && ninja -C build install'
-  rm -rf "$t" || true
-  ok "picom installed from source"
-}
+# ===== Rofi Themes =====
+run "Cloning rofi themes" bash -c '
+  set -e
+  tmpdir=$(mktemp -d)
+  trap "rm -rf \"$tmpdir\"" EXIT
+  cd "$tmpdir"
+  git clone --depth=1 https://github.com/lr-tech/rofi-themes-collection.git
+  mkdir -p "$HOME/.local/share/rofi/themes/"
+  cp -r rofi-themes-collection/themes/* "$HOME/.local/share/rofi/themes/"
+'
 
-# ===== polybar: try package, fallback to build =====
-install_polybar() {
-  if apt-cache show polybar >/dev/null 2>&1; then
-    run "Installing polybar from repository" sudo apt-get install -y polybar && return 0
-  fi
-  warn "polybar not available in repo. Building from source"
-  local t; t="$(mktemp -d)"
-  run "Cloning polybar" bash -c 'cd "'"$t"'" && git clone --recursive https://github.com/polybar/polybar.git'
-  run "Configuring polybar" bash -c 'cd "'"$t"'/polybar && mkdir -p build && cd build && cmake ..'
-  run "Building polybar" bash -c 'cd "'"$t"'/polybar/build && make -j"$(nproc)"'
-  run "Installing polybar" sudo bash -c 'cd "'"$t"'/polybar/build && make install'
-  rm -rf "$t" || true
-  ok "polybar installed from source"
-}
+# ===== Configure LightDM =====
+run "Configuring LightDM greeter" sudo cp "$DIR/../shared/utils/lightdm-gtk-greeter.conf" /etc/lightdm/lightdm-gtk-greeter.conf
 
+# ===== Creating folders =====
 rule
-install_picom
-install_polybar
+run "Creating XDG-like folders" bash -c 'mkdir -p "$HOME"/{Pictures,Downloads,Documents,Videos,Music,Projects,Repositories,Software,Credentials,Templates,Public,Desktop}'
 rule
+
+# ===== Install Hack Nerd Font =====
+NF_VER="v3.2.1"
+run "Installing Hack Nerd Font ${NF_VER}" bash -c '
+  set -e
+  cd "$HOME/Downloads"
+  wget -q "https://github.com/ryanoasis/nerd-fonts/releases/download/'"$NF_VER"'/Hack.zip"
+  unzip -qq Hack.zip -d hack-fonts
+  sudo mkdir -p /usr/share/fonts/truetype/hack
+  sudo cp -r hack-fonts/*.ttf /usr/share/fonts/truetype/hack/
+  sudo fc-cache -f >/dev/null 2>&1 || true
+  rm -rf Hack.zip hack-fonts
+'
+cd "$DIR"
 
 # ===== Copy config files =====
 rule
 info "Copying configuration files"
 
-# BSPWM
-if [[ -d "$dir/../shared/bspwm" ]]; then
-  find "$dir/../shared/bspwm" -type f -name "*.sh" -exec chmod +x {} +
-  install -d "$HOME/.config/bspwm"
-  cp -r "$dir/../shared/bspwm/." "$HOME/.config/bspwm/" || die "Copying bspwm configs"
-  ok "bspwm configs copied"
+run "bspwm configs" bash -c '
+  cp -r "'"$DIR"'/../shared/bspwm" "$HOME/.config/bspwm"
+  chmod +x "$HOME/.config/bspwm/bspwmrc" || true
+'
+
+run "sxhkd configs" bash -c '
+  cp -r "'"$DIR"'/../shared/sxhkd" "$HOME/.config/sxhkd"
+'
+
+run "zsh config" bash -c '
+  cp -r "'"$DIR"'/../shared/utils/zshrc" "$HOME/.zshrc"
+'
+
+run "polybar configs" bash -c '
+  cp -r "'"$DIR"'/../shared/polybar" "$HOME/.config/polybar"
+  chmod +x "$HOME/.config/polybar/launch.sh" || true
+  chmod +x "$HOME/.config/polybar/modules/"* || true
+'
+
+run "wallpaper" bash -c '
+  mkdir -p "$HOME/Pictures"
+  cp -r "'"$DIR"'/../shared/imgs/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
+'
+
+run "xinitrc" bash -c '
+  printf "exec bspwm\n" > "$HOME/.xinitrc"
+  chmod +x "$HOME/.xinitrc" || true
+'
+rule
+
+# ===== Shell and Display Manager =====
+run "Setting zsh as default shell" chsh -s "$(command -v zsh)" || warn "Could not change shell (non-interactive?)"
+
+# Habilitar DM solo si systemd está presente y no es chroot
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  run "Enabling lightdm.service" sudo systemctl enable lightdm.service || warn "Could not enable lightdm.service"
+  run "Starting lightdm.service" sudo systemctl start lightdm.service || warn "Could not start lightdm.service"
 else
-  warn "Missing $dir/../shared/bspwm"
-fi
-
-# SXHKD
-if [[ -d "$dir/../shared/sxhkd" ]]; then
-  install -d "$HOME/.config/sxhkd"
-  cp -r "$dir/../shared/sxhkd/." "$HOME/.config/sxhkd/" || die "Copying sxhkd configs"
-  ok "sxhkd configs copied"
-else
-  warn "Missing $dir/../shared/sxhkd"
-fi
-
-# Polybar
-if [[ -d "$dir/../shared/polybar" ]]; then
-  chmod +x "$dir/../shared/polybar/launch.sh" || true
-  find "$dir/../shared/polybar/modules" -type f -exec chmod +x {} + 2>/dev/null || true
-  install -d "$HOME/.config/polybar"
-  cp -r "$dir/../shared/polybar/." "$HOME/.config/polybar/" || die "Copying polybar configs"
-  ok "polybar configs copied"
-else
-  warn "Missing $dir/../shared/polybar"
-fi
-
-# Xinit and Picom
-if [[ -f /etc/X11/xinit/xinitrc ]]; then
-  cp /etc/X11/xinit/xinitrc "$HOME/.xinitrc" || warn "Could not copy xinitrc"
-fi
-printf "exec bspwm\n" > "$HOME/.xinitrc" || die "Writing ~/.xinitrc"
-chmod +x "$HOME/.xinitrc" || true
-
-if [[ -d "$dir/../shared/picom" ]]; then
-  install -d "$HOME/.config/picom"
-  cp -r "$dir/../shared/picom/." "$HOME/.config/picom/" || die "Copying picom configs"
-  ok "picom configs copied"
-else
-  warn "Missing $dir/../shared/picom"
+  warn "Systemd no disponible. Omite enable/start de lightdm."
 fi
 rule
 
-# ===== Rofi themes =====
-rtmp="$(mktemp -d)"; trap 'rm -rf "$rtmp"' EXIT
-rule
-run "Cloning rofi-themes-collection" git clone --depth=1 https://github.com/lr-tech/rofi-themes-collection.git "$rtmp/rofi"
-run "Installing rofi themes" bash -c 'install -d "$HOME/.local/share/rofi/themes" && cp -r "'"$rtmp/rofi/themes/"'* "$HOME/.local/share/rofi/themes/"'
-if [[ -f "$dir/../shared/utils/lightdm-gtk-greeter.conf" ]]; then
-  run "Installing lightdm-gtk-greeter.conf" sudo cp "$dir/../shared/utils/lightdm-gtk-greeter.conf" /etc/lightdm/lightdm-gtk-greeter.conf
-else
-  warn "Missing lightdm-gtk-greeter.conf"
-fi
-if [[ -d "$dir/../shared/img" ]]; then
-  cp -r "$dir/../shared/img" "$HOME/" || warn "Copying images"
-fi
-rule
-
-# ===== Zsh default shell =====
-rule
-if command -v zsh >/dev/null 2>&1; then
-  chsh -s /usr/bin/zsh "$USER" || warn "Could not change default shell. Do it manually: chsh -s /usr/bin/zsh"
-  if [[ -f "$dir/../shared/utils/alias" ]]; then
-    cat "$dir/../shared/utils/alias" >> "$HOME/.zshrc" || warn "Could not append aliases to .zshrc"
-    ok "Aliases added to .zshrc"
-  else
-    warn "Missing alias file"
-  fi
-else
-  warn "zsh is not available"
-fi
-rule
-
-# ===== Scripts: format + PATH =====
-rule
-shopt -s nullglob
-utils_bin=( "$dir/../shared/utils/bin/"* )
-if (( ${#utils_bin[@]} )); then
-  run "Normalizing line endings (dos2unix)" dos2unix "${utils_bin[@]}"
-  run "Installing scripts to /usr/local/bin" sudo install -m 755 "${utils_bin[@]}" -t /usr/local/bin/
-  if [[ -f /usr/local/bin/set_target ]]; then
-    run "Setting permissions for set_target" sudo chmod 775 /usr/local/bin/set_target
-  else
-    warn "set_target not found after install"
-  fi
-else
-  warn "No scripts found in $dir/../shared/utils/bin/"
-fi
-rule
-
-# ===== Apply GNOME Terminal config and set_target =====
-rule
-if command -v /usr/local/bin/set_target >/dev/null 2>&1; then
-  /usr/local/bin/set_target 8.8.8.8 || error "set_target failed with 8.8.8.8"
-  ok "set_target executed"
-else
-  warn "set_target not in PATH"
-fi
-
-if [[ -x "$dir/../shared/utils/gnome-terminal.sh" ]]; then
-  chmod +x "$dir/../shared/utils/gnome-terminal.sh" || true
-  if [[ -f "$dir/../shared/utils/gnome.conf" ]]; then
-    "$dir/../shared/utils/gnome-terminal.sh" "$dir/../shared/utils/gnome.conf" || error "gnome-terminal.sh failed with gnome.conf"
-    ok "GNOME Terminal config applied"
-  else
-    warn "Missing gnome.conf"
-  fi
-else
-  warn "Missing gnome-terminal.sh"
-fi
-rule
-
-ok "Installation completed. Please reboot the system to apply changes."
-rule
+ok "Setup completo"
