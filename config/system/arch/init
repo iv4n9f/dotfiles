@@ -1,239 +1,108 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ===== UI helpers =====
+# ===== UI =====
 BOLD="\033[1m"; RESET="\033[0m"
 RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; CYAN="\033[36m"
-
-info()  { printf "%b\n" "${BOLD}${CYAN}INFO\t:\t${RESET}$*"; }
-ok()    { printf "%b\n" "${BOLD}${GREEN}OK\t:\t${RESET}$*"; }
-warn()  { printf "%b\n" "${BOLD}${YELLOW}WARN\t:\t${RESET}$*"; }
-error() { printf "%b\n" "${BOLD}${RED}ERROR\t:\t${RESET}$*"; }
+info()  { printf "%b %s\n" "${BOLD}${CYAN}INFO\t:\t${RESET}"  "$*"; }
+ok()    { printf "%b %s\n" "${BOLD}${GREEN}OK\t:\t${RESET}"   "$*"; }
+warn()  { printf "%b %s\n" "${BOLD}${YELLOW}WARN\t:\t${RESET}" "$*"; }
+error() { printf "%b %s\n" "${BOLD}${RED}ERROR\t:\t${RESET}"  "$*"; }
 rule()  { printf "%s\n" "---------------------------------------------------------------------"; }
 die()   { error "$*"; exit 1; }
-
 run() {
   local msg="$1"; shift
   info "$msg"
-  if ! "$@"; then
+  if ! "$@" > /dev/null 2>&1; then
     error "Failed: $msg"
     return 1
   fi
   ok "$msg"
 }
 
-# ===== Args =====
-[[ $# -ge 1 ]] || die "Missing argument: base path 'dir'. Usage: $0 /path/to/dir"
-dir="$(readlink -f "$1")"
-[[ -d "$dir" ]] || die "Directory does not exist: $dir"
+dir=$1
 
-# ===== Root check =====
-if [[ "$(id -u)" -eq 0 ]]; then
-  die "Do not run this script as root. Use a normal user with sudo privileges."
-fi
-
-# ===== Arch check =====
-if [[ -f /etc/os-release ]]; then
-  . /etc/os-release
-  [[ "${ID:-}" == "arch" ]] || die "This init is for Arch Linux. Detected: ${ID:-unknown}"
+# ===== Checking privileges =====
+if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+  error "Do not run this script as root. Use a regular user with sudo."
+  exit 1
 else
-  die "Cannot read /etc/os-release"
+  info "Running as regular user. sudo may prompt for password."
 fi
 
-# ===== Pre-reqs =====
-command -v sudo >/dev/null 2>&1 || die "sudo is not installed"
-command -v pacman >/dev/null 2>&1 || die "pacman not found"
+# ===== PACMAN =====
 
-# ===== System upgrade =====
-rule
-run "Refreshing package databases and upgrading system" sudo pacman -Syu --noconfirm
-rule
-
-# ===== Install packages =====
-# Notes:
-# - base-devel in place of build-essential
-# - dconf-cli ≈ 'dconf' in Arch
-# - xorg / xinit split in Arch
-# - fonts via ttf-hack-nerd (no manual zip)
 packages=(
-  git base-devel curl wget unzip dos2unix
-  bspwm sxhkd polybar feh rofi jq
-  gnome-terminal xclip dconf bat nitrogen
-  xorg-server xorg-xinit picom lightdm lightdm-gtk-greeter
-  ttf-hack-nerd gnome-themes-extra zsh
+  xorg-server
+  xorg-xinit
+  xorg-xrandr
+  xorg-xsetroot
+  xorg-xprop
+  mesa
+  mesa-demos
+  bspwm
+  sxhkd
+  polybar
+  rofi
+  jq
+  kitty
+  xclip
+  vim
+  lightdm
+  lightdm-gtk-greeter
+  feh
+  open-vm-tools
 )
 
-rule
-run "Installing required packages" sudo pacman -S --needed --noconfirm "${packages[@]}"
-rule
+run "Refreshing databases and upgrading system" sudo pacman -Syu --noconfirm
+run "Installing prerequisites" sudo pacman -S --noconfirm --needed "${packages[@]}"
 
-
-# ===== AUR helper: yay =====
-rule
-if ! command -v yay >/dev/null 2>&1; then
-  info "Installing yay (AUR helper)"
-  tmp_yay="$(mktemp -d)"
-  run "Cloning yay-bin from AUR" bash -c 'cd "'"$tmp_yay"'" && git clone https://aur.archlinux.org/yay.git'
-  run "Building and installing yay" bash -c 'cd "'"$tmp_yay"'"/yay && makepkg -si --noconfirm'
-  rm -rf "$tmp_yay" || true
-  ok "yay installed"
+# Remove orphans if any
+if orphans=$(pacman -Qdtq 2>/dev/null) && [ -n "${orphans:-}" ]; then
+  run "Removing orphaned packages" sudo pacman -Rns --noconfirm $orphans
 else
-  ok "yay already installed"
-fi
-rule
-
-# ===== AUR packages via yay =====
-aur_packages=(
-    brave-bin
-)
-
-if (( ${#aur_packages[@]} )); then
-  rule
-  run "Installing AUR packages with yay" yay -S --needed --noconfirm "${aur_packages[@]}"
-  rule
-else
-  warn "No AUR packages specified. Skipping yay installs."
+  info "No orphaned packages to remove"
 fi
 
+# ===== PRE =====
+[ -n "${dir:-}" ] || die "Usa: $0 /ruta/al/repo"
+[ -d "$dir/shared" ] || die "No existe $dir/shared"
+HOME_DIR="$HOME"
 
-# ===== Copy config files =====
-rule
-info "Copying configuration files"
+# ===== BSPWM =====
+install -d -m 755 "$HOME_DIR/.config/bspwm" "$HOME_DIR/.config/sxhkd"
+cp -a "$dir/shared/bspwm/." "$HOME_DIR/.config/bspwm/"
+cp -a "$dir/shared/sxhkd/." "$HOME_DIR/.config/sxhkd/"
+chmod u+x "$HOME_DIR/.config/bspwm/bspwmrc"
 
-# BSPWM
-if [[ -d "$dir/../shared/bspwm" ]]; then
-  find "$dir/../shared/bspwm" -type f -name "*.sh" -exec chmod +x {} +
-  install -d "$HOME/.config/bspwm"
-  cp -r "$dir/../shared/bspwm/." "$HOME/.config/bspwm/" || die "Copying bspwm configs"
-  ok "bspwm configs copied"
-else
-  warn "Missing $dir/../shared/bspwm"
+# ===== POLYBAR =====
+install -d -m 755 "$HOME_DIR/.config/polybar"
+cp -a "$dir/shared/polybar/." "$HOME_DIR/.config/polybar/"
+chmod u+x "$HOME_DIR/.config/polybar/launch.sh"
+chmod u+x "$HOME_DIR/.config/polybar/modules/"* 2>/dev/null || true
+
+# ===== XINITRC =====
+# Si vas a usar LightDM, NO necesitas .xinitrc.
+if [ ! -f "$HOME_DIR/.xinitrc" ]; then
+  printf '%s\n' 'exec bspwm' > "$HOME_DIR/.xinitrc"
+  chmod u+x "$HOME_DIR/.xinitrc"
 fi
 
-# SXHKD
-if [[ -d "$dir/../shared/sxhkd" ]]; then
-  install -d "$HOME/.config/sxhkd"
-  cp -r "$dir/../shared/sxhkd/." "$HOME/.config/sxhkd/" || die "Copying sxhkd configs"
-  ok "sxhkd configs copied"
-else
-  warn "Missing $dir/../shared/sxhkd"
-fi
+# ===== PROPIETARIO HOME =====
+chown -R "$USER:$USER" "$HOME_DIR/.config"
 
-# Polybar
-if [[ -d "$dir/../shared/polybar" ]]; then
-  chmod +x "$dir/../shared/polybar/launch.sh" || true
-  find "$dir/../shared/polybar/modules" -type f -exec chmod +x {} + 2>/dev/null || true
-  install -d "$HOME/.config/polybar"
-  cp -r "$dir/../shared/polybar/." "$HOME/.config/polybar/" || die "Copying polybar configs"
-  ok "polybar configs copied"
-else
-  warn "Missing $dir/../shared/polybar"
-fi
+# ===== LIGHTDM =====
+sudo install -D -m 644 \
+  "$dir/shared/utils/lightdm-gtk-greeter.conf" \
+  /etc/lightdm/lightdm-gtk-greeter.conf
 
-# Xinit and Picom
-printf "exec bspwm\n" > "$HOME/.xinitrc" || die "Writing ~/.xinitrc"
-chmod +x "$HOME/.xinitrc" || true
+sudo install -D -m 644 \
+  "$dir/shared/img/wallpaper.jpg" \
+  /usr/share/backgrounds/wallpaper.jpg
 
-if [[ -d "$dir/../shared/picom" ]]; then
-  install -d "$HOME/.config/picom"
-  cp -r "$dir/../shared/picom/." "$HOME/.config/picom/" || die "Copying picom configs"
-  ok "picom configs copied"
-else
-  warn "Missing $dir/../shared/picom"
-fi
-rule
+sudo systemctl enable lightdm.service || true
+sudo systemctl start lightdm.service || true
 
-# ===== Rofi themes =====
-rule
-rtmp="$(mktemp -d)"
-trap 'rm -rf "$rtmp"' EXIT
-run "Cloning rofi-themes-collection" git clone --depth=1 https://github.com/lr-tech/rofi-themes-collection.git "$rtmp/rofi"
-run "Installing rofi themes" bash -c 'install -d "$HOME/.local/share/rofi/themes" && cp -r "'"$rtmp/rofi/themes/"'"* "$HOME/.local/share/rofi/themes/"'
-# LightDM greeter conf
-if [[ -f "$dir/../shared/utils/lightdm-gtk-greeter.conf" ]]; then
-  run "Installing lightdm-gtk-greeter.conf" sudo cp "$dir/../shared/utils/lightdm-gtk-greeter.conf" /etc/lightdm/lightdm-gtk-greeter.conf
-else
-  warn "Missing lightdm-gtk-greeter.conf"
-fi
-# Images
-if [[ -d "$dir/../shared/img" ]]; then
-  cp -r "$dir/../shared/img" "$HOME/" || warn "Copying images"
-fi
-rule
-
-# ===== Zsh default shell =====
-rule
-if command -v zsh >/dev/null 2>&1; then
-  if chsh -s /usr/bin/zsh "$USER"; then
-    ok "Default shell changed to zsh (applies next login)"
-  else
-    warn "Could not change default shell. Do it manually: chsh -s /usr/bin/zsh"
-  fi
-  if [[ -f "$dir/../shared/utils/alias" ]]; then
-    cat "$dir/../shared/utils/alias" >> "$HOME/.zshrc" || warn "Could not append aliases to .zshrc"
-    ok "Aliases added to .zshrc"
-  else
-    warn "Missing alias file"
-  fi
-else
-  warn "zsh is not available"
-fi
-rule
-
-# ===== Scripts: format + PATH =====
-rule
-shopt -s nullglob
-utils_bin=( "$dir/../shared/utils/bin/"* )
-if (( ${#utils_bin[@]} )); then
-  run "Normalizing line endings (dos2unix)" dos2unix "${utils_bin[@]}"
-  run "Installing scripts to /usr/local/bin" sudo install -m 755 "${utils_bin[@]}" -t /usr/local/bin/
-  if [[ -f /usr/local/bin/set_target ]]; then
-    run "Setting permissions for set_target" sudo chmod 775 /usr/local/bin/set_target
-  else
-    warn "set_target not found after install"
-  fi
-else
-  warn "No scripts found in $dir/../shared/utils/bin/"
-fi
-rule
-
-# ===== Apply GNOME Terminal config and set_target =====
-rule
-if command -v /usr/local/bin/set_target >/dev/null 2>&1; then
-  if ! /usr/local/bin/set_target 8.8.8.8; then
-    error "set_target failed with 8.8.8.8"
-  else
-    ok "set_target executed"
-  fi
-else
-  warn "set_target not in PATH"
-fi
-
-if [[ -x "$dir/../shared/utils/gnome-terminal.sh" ]]; then
-  chmod +x "$dir/../shared/utils/gnome-terminal.sh" || true
-  if [[ -f "$dir/../shared/utils/gnome.conf" ]]; then
-    if ! "$dir/../shared/utils/gnome-terminal.sh" "$dir/../shared/utils/gnome.conf"; then
-      error "gnome-terminal.sh failed with gnome.conf"
-    else
-      ok "GNOME Terminal config applied"
-    fi
-  else
-    warn "Missing gnome.conf"
-  fi
-else
-  warn "Missing gnome-terminal.sh"
-fi
-rule
-
-# ===== Done =====
-ok "Installation completed. You can restart LightDM now if you want to switch to the greeter."
-
-# Optional auto-restart (uncomment if desired; this will kill the current session)
-# if systemctl is-active lightdm >/dev/null 2>&1; then
-#   info "Restarting LightDM..."
-#   sudo systemctl restart lightdm || die "Failed to restart LightDM"
-# else
-#   warn "LightDM is not active. Skipping restart."
-# fi
-
-rule
+# ===== VM TOOLS (VMware) =====
+sudo systemctl enable --now vmtoolsd.service || true
+sudo systemctl enable --now vmware-vmblock-fuse.service || true

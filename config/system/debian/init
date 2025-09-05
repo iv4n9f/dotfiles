@@ -54,6 +54,7 @@ packages=(
   lightdm
   lightdm-gtk-greeter
   feh
+  open-vm-tools
 )
 
 export DEBIAN_FRONTEND=noninteractive
@@ -102,3 +103,5 @@ sudo install -D -m 644 \
 
 sudo systemctl enable lightdm || true
 sudo systemctl start lightdm || true
+sudo systemctl enable open-vm-tools || true
+sudo systemctl start open-vm-tools || true
